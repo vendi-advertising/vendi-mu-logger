@@ -1,0 +1,12 @@
+{
+  "require": {
+    "monolog/monolog": "^3.3",
+    "logtail/monolog-logtail": "^3.0",
+    "symfony/error-handler": "6.2.*"
+  },
+  "autoload": {
+    "psr-4": {
+      "Vendi\\Logger\\": "src/"
+    }
+  }
+}
