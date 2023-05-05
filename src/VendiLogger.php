@@ -15,8 +15,44 @@ use Symfony\Component\ErrorHandler\ErrorRenderer\HtmlErrorRenderer;
 
 class VendiLogger
 {
+    #[LogHandlerInfoAttribute(group: 'Logtail Logging', description: 'Logtail source token', disabledIfNotSet: true)]
+    public const VENDI_LOGGER_LOGTAIL_SOURCE_TOKEN = 'VENDI_LOGGER_LOGTAIL_SOURCE_TOKEN';
+
+    #[LogHandlerInfoAttribute(group: 'Logtail Logging', description: 'PSR 3 log level for Logtail handler', disabledIfNotSet: true)]
+    public const VENDI_LOGGER_LOGTAIL_LEVEL = 'VENDI_LOGGER_LOGTAIL_LEVEL';
+
+    #[LogHandlerInfoAttribute(group: 'ChromePHP Logging', description: 'PSR 3 log level for ChromePHP handler', disabledIfNotSet: true)]
+    public const VENDI_LOGGER_CHROME_PHP_HANDLER_LEVEL = 'VENDI_LOGGER_CHROME_PHP_HANDLER_LEVEL';
+
+    #[LogHandlerInfoAttribute(group: 'File Logging', description: 'PSR 3 log level for file handler', disabledIfNotSet: true)]
+    public const VENDI_LOGGER_FILE_LOG_FILE_LEVEL = 'VENDI_LOGGER_FILE_LOG_FILE_LEVEL';
+
+    #[LogHandlerInfoAttribute(group: 'File Logging', description: 'Unique ID to make discovering log files harder', disabledIfNotSet: false)]
+    public const VENDI_LOGGER_FILE_LOG_UNIQUE_ID = 'VENDI_LOGGER_FILE_LOG_UNIQUE_ID';
+
+    #[LogHandlerInfoAttribute(group: 'File Logging', description: 'Root directory for log files', disabledIfNotSet: false, defaultValue: 'WP_CONTENT_DIR')]
+    public const VENDI_LOGGER_FILE_LOG_ROOT = 'VENDI_LOGGER_FILE_LOG_ROOT';
+
+    #[ConstantInfoAttribute(description: 'Enable Symfony debugging screen', defaultValue: false)]
+    public const VENDI_LOGGER_ENABLE_FULL_DEBUG = 'VENDI_LOGGER_ENABLE_FULL_DEBUG';
+
+    #[ConstantInfoAttribute(description: 'Disable this logging system', defaultValue: false)]
+    public const VENDI_LOGGER_DISABLE = 'VENDI_LOGGER_DISABLE';
+
+    #[ConstantInfoAttribute(description: 'Enable debugging of issues with the logging plugin itself', defaultValue: false)]
+    public const VENDI_LOGGER_DEBUG_MU_PLUGIN = 'VENDI_LOGGER_DEBUG_MU_PLUGIN';
+
+    private const VENDI_LOGGER_FILE_LOG_NAME = 'vendi-logger.log';
+    private const VENDI_LOGGER_FILE_LOG_DIRECTORY_PREFIX = 'vendi-logger';
+    private const VENDI_LOGGER_NAME = 'WordPress Logger';
+
     private function __construct(private readonly string $baseDir)
     {
+    }
+
+    public static function getInfo(bool $echo = true): string
+    {
+        return '';
     }
 
     private function maybeGetLogtailHandler(): ?HandlerInterface
@@ -25,10 +61,10 @@ class VendiLogger
             return null;
         }
 
-        if ($logTailSourceToken = $this->getSetting('VENDI_LOGGER_LOGTAIL_SOURCE_TOKEN')) {
-            $logTailLevel = Level::fromName($this->getSetting('VENDI_LOGGER_LOGTAIL_LEVEL', Level::Error->name));
-
-            return new LogtailHandler($logTailSourceToken, $logTailLevel);
+        if ($logTailSourceToken = $this->getSetting(self::VENDI_LOGGER_LOGTAIL_SOURCE_TOKEN)) {
+            if ($logTailLevel = $this->getLogLevelFromName($this->getSetting(self::VENDI_LOGGER_LOGTAIL_LEVEL))) {
+                return new LogtailHandler($logTailSourceToken, $logTailLevel);
+            }
         }
 
         return null;
@@ -53,7 +89,7 @@ class VendiLogger
             return null;
         }
 
-        if ($chromePhpLevel = $this->getLogLevelFromName($this->getSetting('VENDI_LOGGER_CHROME_PHP_HANDLER_LEVEL'))) {
+        if ($chromePhpLevel = $this->getLogLevelFromName($this->getSetting(self::VENDI_LOGGER_CHROME_PHP_HANDLER_LEVEL))) {
             return new ChromePHPHandler($chromePhpLevel);
         }
 
@@ -66,9 +102,9 @@ class VendiLogger
             return null;
         }
 
-        if ($vendiLoggerPath = $this->getSetting('VENDI_LOGGER_FILE_LOG_ROOT', WP_CONTENT_DIR)) {
-            $vendiLoggerPath = untrailingslashit($vendiLoggerPath).'/vendi-logger';
-            if ($uniqueId = $this->getSetting('VENDI_LOGGER_FILE_LOG_UNIQUE_ID')) {
+        if ($vendiLoggerPath = $this->getSetting(self::VENDI_LOGGER_FILE_LOG_ROOT, WP_CONTENT_DIR)) {
+            $vendiLoggerPath = untrailingslashit($vendiLoggerPath).'/'.self::VENDI_LOGGER_FILE_LOG_DIRECTORY_PREFIX;
+            if ($uniqueId = $this->getSetting(self::VENDI_LOGGER_FILE_LOG_UNIQUE_ID)) {
                 $vendiLoggerPath .= '-'.untrailingslashit($uniqueId);
             }
 
@@ -78,10 +114,10 @@ class VendiLogger
 
             // This can happen if directory creation fails
             if (null !== $vendiLoggerPath) {
-                $vendiLoggerFile = $vendiLoggerPath.'/vendi-logger.log';
-                $vendiLoggerLevel = $this->getLogLevelFromName($this->getSetting('VENDI_LOGGER_FILE_LOG_FILE_LEVEL', Level::Debug->name));
-
-                return new RotatingFileHandler($vendiLoggerFile, 10, $vendiLoggerLevel);
+                $vendiLoggerFile = $vendiLoggerPath.'/'.self::VENDI_LOGGER_FILE_LOG_NAME;
+                if ($vendiLoggerLevel = $this->getLogLevelFromName($this->getSetting(self::VENDI_LOGGER_FILE_LOG_FILE_LEVEL))) {
+                    return new RotatingFileHandler($vendiLoggerFile, 10, $vendiLoggerLevel);
+                }
             }
         }
 
@@ -122,7 +158,7 @@ class VendiLogger
                 if ($handler instanceof HandlerInterface) {
                     // Defer until the last minute to create the logger
                     if (!$logger) {
-                        $logger = new Logger('WordPress logger');
+                        $logger = new Logger(self::VENDI_LOGGER_NAME);
                     }
                     $logger->pushHandler($handler);
                 }
@@ -133,11 +169,16 @@ class VendiLogger
         }
     }
 
+    private function isWordPressDebugModeEnabled(): bool
+    {
+        return defined('WP_DEBUG') && WP_DEBUG;
+    }
+
     private function enableErrorTemplate(): void
     {
         // This is a developer-only error message, so if WP_DEBUG isn't enabled, which it
         // shouldn't be on PROD, then we don't want to enable this.
-        if (defined('WP_DEBUG') && WP_DEBUG && $this->getSetting('VENDI_LOGGER_ENABLE_FULL_DEBUG')) {
+        if ($this->isWordPressDebugModeEnabled() && $this->getSetting(self::VENDI_LOGGER_ENABLE_FULL_DEBUG)) {
             Debug::enable();
 
             return;
@@ -149,12 +190,20 @@ class VendiLogger
 
     private function loadDependencies(): void
     {
+        if (!file_exists($this->baseDir.'/vendor/autoload.php')) {
+            if ($this->$this->isWordPressDebugModeEnabled() && $this->getSetting(self::VENDI_LOGGER_DEBUG_MU_PLUGIN)) {
+                throw new \RuntimeException('Vendi Logger is missing dependencies. Please run composer install from the plugin directory.');
+            }
+
+            return;
+        }
+
         require_once $this->baseDir.'/vendor/autoload.php';
     }
 
     private function checkForFastOptOut(): bool
     {
-        if ($this->getSetting('VENDI_LOGGER_DISABLE')) {
+        if ($this->getSetting(self::VENDI_LOGGER_DISABLE)) {
             return true;
         }
 

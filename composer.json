@@ -1,5 +1,6 @@
 {
   "require": {
+    "php": "^8.0|^8.1|^8.2",
     "monolog/monolog": "^3.3",
     "logtail/monolog-logtail": "^3.0",
     "symfony/error-handler": "6.2.*"
